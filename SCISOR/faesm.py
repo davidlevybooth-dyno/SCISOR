@@ -10,9 +10,14 @@ class FAESM_Base(nn.Module):
         conditioning_dim = kwargs.get("d_embedding", 128)
         pretrained = kwargs.get("pretrained", True)
 
+        # use_fa=False: FlashAttention-2 does not support the Tesla T4 (sm_75) and
+        # faesm's flash rotary path hard-requires flash_attn. With use_fa=False the
+        # layer keeps HF's pure-PyTorch RotaryEmbedding (created by the EsmSelfAttention
+        # parent for rotary configs) and runs via torch SDPA, which the model's forward
+        # pass already falls back to when flash_attn is unavailable.
         self.faesm = FAEsmForMaskedLM.from_pretrained(
             pretrained_model_name_or_path=f"facebook/{hf_model_name}",
-            use_fa=True,
+            use_fa=False,
             conditioning_dim=conditioning_dim,
             load_pretrained_weights=pretrained,
         )

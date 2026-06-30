@@ -1,3 +1,8 @@
+# Local inference setup (not part of upstream)
+.venv/
+/weights
+results/
+
 wandb
 outputs
 data/uniref50

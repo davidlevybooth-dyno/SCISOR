@@ -44,6 +44,39 @@ Running `python sample_sequences.py` will produce a file `sampled_sequences.fast
 
 Running `python shrink_sequences.py` takes in a `fasta` file like `sampled_sequences.fasta`, and produces a file `shrunk_sequences.fasta`.
 
+### Shrinking real (long) proteins for inference — `scisor_shrink.py`
+
+`shrink_sequences.py` is geared at the paper's benchmark and has a couple of sharp
+edges for applied use. `scisor_shrink.py` is a drop-in inference runner that fixes them:
+
+- **No silent length filter.** Upstream's `read_fasta_to_df` ends with
+  `.head(100).query("Length <= 1000")`, which silently drops every sequence longer
+  than 1000 aa. `scisor_shrink.py` keeps all sequences.
+- **Local checkpoints.** Loads from `weights/SCISOR_U90_S.ckpt` (configurable via
+  `--ckpt`) instead of re-downloading from HuggingFace each run.
+- **Absolute size budgets.** `--target-length N` deletes down to exactly N residues
+  (e.g. AAV packaging limits), in addition to `--shrink-pct`.
+- **Stochastic sampling.** `--num-samples K` draws K independent shrinks per input
+  (SCISOR samples deletions via multinomial); `--temperature 0` gives a single
+  deterministic top-k shrink.
+
+```sh
+python scisor_shrink.py --input targets.fasta --output shrunk.fasta \
+    --target-length 1274 --num-samples 32 --batch-size 16
+```
+
+**Running on non-Ampere GPUs / without FlashAttention.** FlashAttention-2 does not
+support pre-Ampere GPUs (e.g. Tesla T4, sm_75), and `faesm`'s flash rotary path
+hard-requires `flash_attn`. The ESM backbone is therefore constructed with
+`use_fa=False` (see `SCISOR/faesm.py`), which keeps HuggingFace's pure-PyTorch
+RotaryEmbedding and runs attention via Torch SDPA — the same path the model already
+falls back to at forward time when `flash_attn` is unavailable. For inference you do
+**not** need the training-only dependencies (`evodiff`, `faiss-cpu`, `hydra-core`);
+`pip install -e . --no-deps` plus `torch torchvision pytorch_lightning transformers
+faesm pandas tqdm wandb huggingface_hub einops omegaconf` is sufficient. Note that
+recent `transformers` (5.x) removed symbols `faesm` imports from the ESM module;
+pin `transformers==4.46.3`.
+
 ### Training SCISOR with Uniref50
 
 To train SCISOR on Uniref50, start by downloading the data and pre-processing it into batches:
