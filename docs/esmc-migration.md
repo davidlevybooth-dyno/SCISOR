@@ -4,6 +4,12 @@ Goal: replace SCISOR's ESM2 backbone with **ESMC** (ESM Cambrian), which outperf
 ESM2 in our hands. This requires retraining the denoiser and is the most
 infrastructure-heavy workstream; treat it as parallelizable R&D with a clear go/no-go.
 
+> Head start: `~/phi-api` already runs an **`esmc` runner** on k8s H100s
+> (`infrastructure/cloudbuild/runners/esmc.yaml`, `populate-esmc-weights-job.yaml`), so
+> ESMC weights/inference are already provisioned — reuse it for the embedding-layer sweep
+> (M4.1) instead of bootstrapping ESMC from scratch. The ProteinGym guard in
+> [benchmarking.md](benchmarking.md) is the M4.2 parity gate.
+
 ## 1. Where ESM2 lives today
 
 SCISOR's denoiser is an ESM2 model with two additions: a per-layer FiLM conditioning on

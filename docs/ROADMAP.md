@@ -6,10 +6,18 @@ therapeutic targets, validated against rational/manual designs.
 
 This document is the top-level plan. Detailed design briefs:
 
+- [benchmarking.md](benchmarking.md) — frozen baseline + two scoreboards + ProteinGym guard (how we measure rigorously)
 - [evaluation.md](evaluation.md) — scoring stack and the comparison against rational designs
+- [performance.md](performance.md) — making SCISOR fast (deletions-per-step); the separate speed path
 - [constrained-diffusion.md](constrained-diffusion.md) — domain locking via keep-masks
 - [structural-integrity-linkers.md](structural-integrity-linkers.md) — block deletion + linker repair
 - [esmc-migration.md](esmc-migration.md) — swapping the ESM2 backbone for ESMC
+
+> **First improvements selected (start here on a fresh machine).** Phase 0 is a gate:
+> build the harness and freeze a baseline ([benchmarking.md](benchmarking.md)). Then two
+> independent first experiments run in parallel — **Path A (speed):** deletions-per-step
+> ([performance.md](performance.md)); **Path B (quality):** keep-mask constrained sampling
+> ([constrained-diffusion.md](constrained-diffusion.md)). See §5 Phase 0/1.
 
 ---
 
@@ -58,11 +66,18 @@ micro-dystrophin size — a clinically validated minimization to check SCISOR ag
 - Confirmed SCISOR is stochastic at `temperature=1` (multinomial deletions).
 - Baseline samples: 32 stochastic shrinks/target at 1,274 aa (U90_S) for
   TSC2 / SHANK3 / SYNGAP1.
+- Folding infra already exists: `~/phi-api` has production k8s **H100 runners** for
+  `esmfold2`, `boltz2` (and `esmc`). The quality harness calls these rather than standing
+  up folding from scratch.
 
 ## 3. Scope of this program (not yet done)
 
+- A **benchmark harness**: frozen baseline + two scoreboards (speed, quality) + a
+  fold-free ProteinGym model-quality guard ([benchmarking.md](benchmarking.md)).
 - An evaluation stack (structure / motif / interface / AAV-fit / naturalness).
 - A quantitative comparison of SCISOR vs rational deletions.
+- **Performance:** kill the one-deletion-per-forward serial bottleneck
+  ([performance.md](performance.md)) — a separate path from quality.
 - Constrained diffusion: hard domain locking (keep-masks).
 - Structural integrity: contiguous block deletion + variable-length linker repair
   (the hardest workstream).
@@ -75,18 +90,25 @@ micro-dystrophin size — a clinically validated minimization to check SCISOR ag
 ```mermaid
 graph TD
     WS0["WS0 Eval harness + baselines"] --> WS1["WS1 Deletion-tolerance maps + rational comparison"]
+    WS0 --> WSP["WS-P Performance (deletions-per-step)"]
     WS0 --> WS2["WS2 Constrained diffusion (domain locking)"]
     WS2 --> WS3["WS3 Structural integrity (block deletion + linkers)"]
     WS1 --> WS3
     WS0 --> WS4["WS4 ESM2 to ESMC migration"]
-    WS3 --> WS5["WS5 Integration, validation, productionization"]
+    WSP --> WS5["WS5 Integration, validation, productionization"]
+    WS3 --> WS5
     WS4 --> WS5
 ```
 
+WS-P (performance) and WS2 (quality) are the two **first improvements**: independent code
+paths, both gated only by WS0, run in parallel. WS-P makes every downstream folding loop
+cheaper.
+
 | WS | Theme | Brief |
 |---|---|---|
-| WS0 | Evaluation harness + baselines | [evaluation.md](evaluation.md) |
+| WS0 | Evaluation/benchmark harness + frozen baselines | [benchmarking.md](benchmarking.md), [evaluation.md](evaluation.md) |
 | WS1 | Deletion-tolerance maps + rational-design comparison | [evaluation.md](evaluation.md) |
+| WS-P | Performance: deletions-per-step + secondary levers | [performance.md](performance.md) |
 | WS2 | Constrained diffusion (domain locking) | [constrained-diffusion.md](constrained-diffusion.md) |
 | WS3 | Structural integrity (block deletion + linkers) | [structural-integrity-linkers.md](structural-integrity-linkers.md) |
 | WS4 | ESM2 → ESMC migration | [esmc-migration.md](esmc-migration.md) |
@@ -99,11 +121,31 @@ graph TD
 Weeks are indicative and overlap. Each milestone lists a deliverable, a success
 criterion, and the compute it needs.
 
-### Phase 1 — Baselines and evaluation (weeks 1–4) · WS0, WS1
-- **M1.1 Eval harness v1.** `scisor_score.py` scores a shrunk FASTA on structure
-  (ESMFold/Boltz pLDDT, templated RMSD/TM to original domains), motif retention,
-  and AAV-fit. *Success:* one command turns the 32-sample baselines into a ranked
-  table. *Compute:* T4 (folding small batches) or A100 for throughput.
+### Phase 0 — Harness + frozen baseline (weeks 1–2) · WS0 (gate)
+Nothing else starts until this exists. Full detail in [benchmarking.md](benchmarking.md).
+- **M0.1 Two scoreboards.** `scisor_bench.py` (speed: wall-clock, forward-pass count,
+  seqs/sec, peak mem, GPU-hours) and `scisor_score.py` cheap tier (naturalness/NLL, motif
+  retention, AAV-fit, deletion-frequency maps). *Success:* one command each.
+- **M0.2 ProteinGym guard.** `scisor_proteingym.py` reproduces the paper's deletion-effect
+  Spearman; the number is committed as the fold-free regression gate.
+- **M0.3 Frozen baseline.** Regenerate the 32-sample baselines (3 targets + dystrophin)
+  with pinned seeds; commit metrics + commands + seeds + GPU-hours under `benchmarks/`.
+- **M0.4 Folding client.** Thin client to the existing `~/phi-api` `esmfold2`/`boltz2`
+  H100 runners for the heavy quality tier (pLDDT/pTM/TM/RMSD on shortlists).
+
+### Phase 1 — Baselines, tolerance maps, first improvements (weeks 2–6) · WS1, WS-P, WS2
+After Phase 0, the two first improvements run in parallel (Path A speed, Path B quality).
+
+- **M1.1 Eval harness v1 (heavy tier).** `scisor_score.py` adds structure
+  (ESMFold/Boltz pLDDT, templated RMSD/TM to original domains) via the phi-api runners on
+  shortlists. *Success:* one command turns the 32-sample baselines into a ranked table.
+  *Compute:* phi-api H100 for folding throughput; sampling on local A100.
+- **M-P (Path A, speed).** Deletions-per-step: fix `shrink_sequence` bookkeeping, add
+  `--dels-per-step`, sweep {1,2,4,8,16,32}, document the quality-preserving knee on both
+  scoreboards ([performance.md](performance.md)). *Success:* order-of-magnitude fewer
+  forward passes on the ~530-deletion targets at equal quality.
+- **M2 (Path B, quality).** Keep-mask constrained sampling (see Phase 2 below) is the
+  first quality experiment, benchmarked against the frozen baseline.
 - **M1.2 Deletion-tolerance maps.** Per-residue deletion frequency across the 32
   samples, plus the M-sweep (delete d% for d in a grid), overlaid on domain maps.
   *Success:* a figure per target showing where SCISOR wants to cut vs keep.
@@ -158,13 +200,19 @@ criterion, and the compute it needs.
 
 ## 6. Compute plan
 
-- **T4 (current):** inference, baselines, small folding batches. Cost reality: a
-  ~530-deletion target takes ~60 min for 32 samples (SCISOR deletes one residue per
-  denoising step → ~530 sequential forwards × 2 batches of 16; ~3.3 s/step with
-  windowing). SYNGAP1 (69 deletions) is minutes.
-- **A100 (on demand):** the refold loop (WS3), ESMC retraining (WS4), and larger
-  SCISOR models (U90_M/L). Migration is a config/runtime change; the inference code
-  already runs without FlashAttention and will use it where available on Ampere.
+Hybrid (decided): **SCISOR sampling on local A100**, **folding eval on `~/phi-api` k8s
+H100 runners**, **one T4 run kept only as the slow-baseline timing reference**.
+
+- **T4 (reference only):** the historical cost line — a ~530-deletion target takes ~60 min
+  for 32 samples (one residue per denoising step → ~530 sequential forwards × 2 batches of
+  16; ~3.3 s/step with windowing). SYNGAP1 (69 deletions) is minutes. WS-P attacks exactly
+  this serial cost.
+- **Local A100:** SCISOR sampling (light; 35M denoiser), the cheap quality tier, and the
+  ProteinGym guard — fast iteration for both first improvements.
+- **phi-api H100 runners:** the heavy folding tier (`esmfold2`/`boltz2`), the WS3 refold
+  loop, ESMC retraining (WS4; an `esmc` runner already exists), and larger SCISOR models
+  (U90_M/L). FlashAttention is available here (`use_fa=True`); the inference code already
+  falls back to SDPA where it is not.
 
 ## 7. Risks and decision points
 

@@ -72,6 +72,11 @@ target's design spec (shares the frozen-set schema from WS2).
 
 ## 4. Refold validation loop (M3.3)
 
+The refold loop reuses the heavy quality tier from [benchmarking.md](benchmarking.md):
+folds go to the existing `~/phi-api` `esmfold2` (screening) and `boltz2`
+(interfaces/co-folds) H100 runners. The WS-P speedup ([performance.md](performance.md))
+keeps the linker-search iteration affordable.
+
 For each candidate construct:
 1. Fold (ESMFold for screening; Boltz for interfaces/co-folds on shortlist).
 2. Check **retained-domain integrity** (domain pLDDT, templated RMSD/TM to WT domains).

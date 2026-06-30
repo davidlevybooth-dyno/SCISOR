@@ -77,6 +77,43 @@ faesm pandas tqdm wandb huggingface_hub einops omegaconf` is sufficient. Note th
 recent `transformers` (5.x) removed symbols `faesm` imports from the ESM module;
 pin `transformers==4.46.3`.
 
+## Improvement program (planned work)
+
+This fork is being evolved from a naturalness-only deletion model into a constrained,
+structure-aware protein-minimization platform, with rigorous benchmarking. If you are
+picking this up on a fresh machine, start with the docs below — they are the source of
+truth for the plan.
+
+- **[docs/ROADMAP.md](docs/ROADMAP.md)** — top-level plan, workstreams (WS0–WS5 + WS-P),
+  phased timeline, compute plan.
+- **[docs/benchmarking.md](docs/benchmarking.md)** — how we measure rigorously: frozen
+  baseline, two scoreboards (speed vs quality), the fold-free ProteinGym guard.
+- **[docs/performance.md](docs/performance.md)** — the separate **speed** path
+  (deletions-per-step; SCISOR currently deletes one residue per forward pass, serially).
+- **[docs/evaluation.md](docs/evaluation.md)** — quality scoring axes and rational-design
+  comparison.
+- **[docs/constrained-diffusion.md](docs/constrained-diffusion.md)** — keep-mask domain
+  locking (the first **quality** improvement).
+- **[docs/structural-integrity-linkers.md](docs/structural-integrity-linkers.md)** — block
+  deletion + linker repair.
+- **[docs/esmc-migration.md](docs/esmc-migration.md)** — ESM2 → ESMC backbone swap.
+
+**Start here (first improvements).** Phase 0 is a gate: build the harness and freeze a
+baseline. Then two independent experiments run in parallel:
+
+- **Path A (speed)** — deletions-per-step in [docs/performance.md](docs/performance.md).
+- **Path B (quality)** — keep-masks in [docs/constrained-diffusion.md](docs/constrained-diffusion.md).
+
+**Compute.** Hybrid: SCISOR sampling on a local A100; folding-based quality eval via the
+existing `~/phi-api` k8s **H100** runners (`esmfold2`, `boltz2`); one T4 run kept only as
+the slow-baseline timing reference.
+
+**Planned scripts / flags (not yet implemented — see the docs):** `scisor_bench.py`
+(speed scoreboard), `scisor_score.py` + `SCISOR/scoring/` (quality scoreboard),
+`scisor_proteingym.py` (model-quality guard), and new
+[scisor_shrink.py](scisor_shrink.py) flags `--dels-per-step` (speed) and `--keep-mask`
+(locks).
+
 ### Training SCISOR with Uniref50
 
 To train SCISOR on Uniref50, start by downloading the data and pre-processing it into batches:

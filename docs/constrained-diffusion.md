@@ -5,6 +5,13 @@ ligand motifs, structured domains) and guarantee SCISOR never removes them, whil
 still hitting the target length. This is the first and cheapest form of "constrained
 diffusion" — it changes only the sampling step, not the model.
 
+> **Selected as the first quality improvement (Path B).** Cheapest high-leverage win
+> (sampling-only, no retraining) and it directly targets the real-world goal of preserving
+> function on SYNGAP1/SHANK3/TSC2. It is benchmarked constrained-vs-unconstrained against
+> the frozen baseline per [benchmarking.md](benchmarking.md), and runs in parallel with the
+> speed path ([performance.md](performance.md)). Note the keep-mask shares the
+> shrinking-coordinate bookkeeping fixed by Path A.
+
 ## 1. Where it hooks in
 
 SCISOR already zeroes deletion probability at special tokens inside `p_sample`. From
@@ -96,11 +103,13 @@ python scisor_shrink.py --input ../targets/SYNGAP1.fasta \
 ```
 
 ## 5. Milestones / outcomes
-- **M2.1:** keep-mask in `p_sample` with coordinate-tracked bookkeeping; unit test that
-  no frozen position is ever deleted (cross-checked against oversample-and-filter).
+- **M2.1:** keep-mask in `p_sample` with coordinate-tracked bookkeeping (same frame as the
+  WS-P deletions-per-step fix); unit test that no frozen position is ever deleted
+  (cross-checked against oversample-and-filter).
 - **M2.2:** frozen-set schema + `--keep-mask` flag; constraint sets for the 3 targets.
 - **M2.3:** constrained 32-sample baselines; report the naturalness/score cost of locks
-  vs unconstrained, and confirm target length still met (or feasibility flagged).
+  vs unconstrained on the [benchmarking.md](benchmarking.md) quality scoreboard, and
+  confirm target length still met (or feasibility flagged).
 
 ## 6. Limitations (motivates WS3)
 Locking prevents deleting the wrong residues, but scattered single-residue deletions

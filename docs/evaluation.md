@@ -5,6 +5,14 @@ SCISOR's deletions against hand/rational designs on the same axes. SCISOR optimi
 naturalness only; this is the layer that tells us whether a construct is actually
 foldable, functional, and deliverable.
 
+> This brief defines *what* to score (the axes). The *how* — frozen baseline, two
+> scoreboards (speed vs quality), the fold-free ProteinGym guard, compute placement, and
+> the reproducibility rules — lives in [benchmarking.md](benchmarking.md). The scoring
+> runs in two tiers: a **cheap, fold-free tier** (naturalness/NLL, motif retention,
+> AAV-fit, deletion-frequency maps) on local A100 that gates everything, and a **heavy
+> folding tier** that calls the existing `~/phi-api` `esmfold2`/`boltz2` H100 runners on
+> ranked shortlists only.
+
 ## 1. Scoring axes
 
 | Axis | Metric | Tool | Question it answers |
@@ -26,8 +34,16 @@ penalize a construct for low linker pLDDT alone.
 Score these side-by-side per target:
 - SCISOR baseline samples (current 32-sample sets at 1,274 aa).
 - SCISOR constrained samples (WS2, once locks exist).
+- SCISOR fast-sampled samples (WS-P deletions-per-step; must match baseline quality).
 - Rational/manual designs (MT9 for TSC2; SHANK3 and SYNGAP1 minigenes).
 - External baselines where available (Raygun, ProGen2 length-conditioned).
+
+### Model-quality regression guard (fold-free)
+Independent of construct scoring, `scisor_proteingym.py` scores deletion variants with
+SCISOR's predicted deletion log-prob and computes **Spearman vs the ProteinGym
+indel/deletion DMS set** (the paper's SOTA claim). This is the minutes-fast gate that any
+speed change (WS-P) or refactor must keep green before touching the folding loop. The
+baseline Spearman is committed; see [benchmarking.md](benchmarking.md) §4.
 
 ### Rational-design ingestion (input contract)
 Rational designs are supplied later as FASTA. Each record:
@@ -94,6 +110,7 @@ rational priors; disagreement is a concrete flag.
 
 ## 6. Open questions
 - Folding backend of record (ESMFold for speed vs Boltz for interfaces) — likely both,
-  ESMFold for screening and Boltz for interface/co-fold on shortlisted constructs.
+  via the existing phi-api `esmfold2` (screening) and `boltz2` (interface/co-fold on
+  shortlists) runners.
 - Where templated RMSD uses the experimental structure vs an AF2/ESMFold model of WT.
 - Exact weighting for the composite rank (set per target with the team).
